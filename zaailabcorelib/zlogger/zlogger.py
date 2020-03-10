@@ -6,16 +6,24 @@ from logging.handlers import TimedRotatingFileHandler
 
 from zaailabcorelib.zlogger.constant import DEV_FILENAME, PROD_FILENAME, STAG_FILENAME
 import traceback
+import warnings
+
+class Singleton(type):
+    _instances = {}
+    def __call__(cls, *args, **kwargs):
+        if len(cls._instances) != 0:
+            warnings.warn("This instance is already created so re-use initialized parameters!")
+        if cls not in cls._instances:
+            cls._instances[cls] = super(Singleton, cls).__call__(*args, **kwargs)
+        return cls._instances[cls]
 
 
-class Zlogger():
-    __instance = None
-
-    @staticmethod
-    def get_logger():
-        if Zlogger.__instance is None:
-            Zlogger.__instance = Zlogger()
-        return Zlogger.__instance
+class Zlogger(metaclass=Singleton):
+    @classmethod
+    def get_logger(cls,  *args, **kwargs):
+        if cls not in cls._instances:
+            cls._instances[cls] = super(Singleton, cls).__call__(*args, **kwargs)
+        return cls._instances[cls]
 
     def __init__(self, project_name=None, config_dir='./conf'):
         self._config_dir = config_dir
