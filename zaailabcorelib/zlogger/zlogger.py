@@ -27,7 +27,6 @@ class Zlogger(metaclass=Singleton):
 
     def __init__(self, project_name=None, config_dir='./conf'):
         self._config_dir = config_dir
-        self._getConfigDirectory()
         try:
             env = os.environ['SERVICE_ENV_SETTING']
             assert env in ["DEVELOPMENT", "PRODUCTION", "STAGING"]
@@ -43,7 +42,9 @@ class Zlogger(metaclass=Singleton):
             self.conf = self._production()
 
         if project_name is None:
-            self.project_name = os.environ['NAME']
+            self.project_name = os.environ.get('SERVICE_NAME', None)
+            if self.project_name is None:
+                self.project_name = os.environ['NAME']
         else:
             self.project_name = project_name
 
@@ -89,27 +90,29 @@ class Zlogger(metaclass=Singleton):
         return logger
 
     def _development(self):
+        path = os.path.join(self._config_dir, DEV_FILENAME)
+        self._check_exists(path)
         configParser = configparser.ConfigParser()
-        configParser.read(self._dev_config_paths)
+        configParser.read(path)
         return configParser
 
     def _staging(self):
+        path = os.path.join(self._config_dir, STAG_FILENAME)
+        self._check_exists(path)
         configParser = configparser.ConfigParser()
-        configParser.read(self._stag_config_paths)
+        configParser.read(path)
         return configParser
 
     def _production(self):
+        path = os.path.join(self._config_dir, PROD_FILENAME)
+        self._check_exists(path)
         configParser = configparser.ConfigParser()
-        configParser.read(self._prod_config_paths)
+        configParser.read(path)
         return configParser
 
-    def _getConfigDirectory(self):
-        self._dev_config_paths = os.path.join(self._config_dir, DEV_FILENAME)
-        self._prod_config_paths = os.path.join(self._config_dir, PROD_FILENAME)
-        self._stag_config_paths = os.path.join(self._config_dir, STAG_FILENAME)
-        for f in [self._dev_config_paths, self._prod_config_paths, self._stag_config_paths]:
-            if not os.path.exists(f):
-                raise FileNotFoundError("File not found: {}".format(f))
+    def _check_exists(self, path):
+        if not os.path.exists(path):
+            raise FileNotFoundError("File not found: {}".format(path))
 
     def info(self, msg):
         self.info_logger.info(msg)

@@ -27,18 +27,9 @@ WAIT_PROCESS = 2
 SEND_ANSWER = 3
 CLOSED = 4
 
+from threading import Thread
 
-class ProcessWrk(Process):
-    def __init__(self, *args, **kwargs):
-        super(ProcessWrk, self).__init__()
-        self._handler_cls = kwargs.get('handler_cls')
-        self._processor_cls = kwargs.get('processor_cls')
-        self._tasks_queue = kwargs.get('tasks_queue')
-        self._callback_queue = kwargs.get('callback_queue')
-        self._model_config = kwargs.get('model_config')
-        self._worker_id = kwargs.get('worker_id')
-        print("Start Worker:", self._worker_id)
-
+class WorkerBase():
     def run(self):
         """Loop getting clients from the shared queue and process them"""
         # Init Handler and Processor
@@ -60,6 +51,28 @@ class ProcessWrk(Process):
                 self._callback_queue.put({"ok_all": False, 
                                         "message": b"", 
                                         "rsocket_fileno": rsocket_fileno})
+
+class ThreadWkr(Thread, WorkerBase):
+    def __init__(self, *args, **kwargs):
+        super(ThreadWkr, self).__init__()
+        self._handler_cls = kwargs.get('handler_cls')
+        self._processor_cls = kwargs.get('processor_cls')
+        self._tasks_queue = kwargs.get('tasks_queue')
+        self._callback_queue = kwargs.get('callback_queue')
+        self._model_config = kwargs.get('model_config')
+        self._worker_id = kwargs.get('worker_id')
+        print("Start Thread Worker:", self._worker_id)
+
+class ProcessWrk(Process, WorkerBase):
+    def __init__(self, *args, **kwargs):
+        super(ProcessWrk, self).__init__()
+        self._handler_cls = kwargs.get('handler_cls')
+        self._processor_cls = kwargs.get('processor_cls')
+        self._tasks_queue = kwargs.get('tasks_queue')
+        self._callback_queue = kwargs.get('callback_queue')
+        self._model_config = kwargs.get('model_config')
+        self._worker_id = kwargs.get('worker_id')
+        print("Start Process Worker:", self._worker_id)
 
 def locked(func):
     """Decorator which locks self.lock."""
@@ -249,12 +262,14 @@ class Connection(object):
 class TModelPoolServer(object):
     """TModelPoolServer is based on Non-blocking server."""
 
-    def __init__(self, *args, **kwargs):
-        self.handler_cls = kwargs.get("handler_cls")
-        self.processor_cls = kwargs.get("processor_cls")
-        self.tsocket = kwargs.get("tsocket")
-        self.transport_factory = kwargs.get("transport_factory") # The default is FrameTransport
-        self.protocol_factory = kwargs.get("protocol_factory")
+    def __init__(self, handler_cls, processor_cls, tsocket, protocol_factory, worker_type='process', *args, **kwargs):
+        assert worker_type in ['process', 'thread']
+        self.worker_type = worker_type
+        self.handler_cls = handler_cls
+        self.processor_cls = processor_cls
+        self.tsocket = tsocket
+        self.transport_factory = kwargs.get('transport_factory') # The default is FrameTransport
+        self.protocol_factory = protocol_factory
         self.list_model_config = kwargs.get("list_model_config", [])
         self.clients = {} # Store client connection
         self.callback_queue = Queue()
@@ -272,11 +287,16 @@ class TModelPoolServer(object):
             return
         self.tsocket.listen()
 
+        if self.worker_type == 'process':
+            self.worker_cls = ProcessWrk
+        else:
+            self.worker_cls = ThreadWkr
+
         for wrk_id, model_config in enumerate(self.list_model_config):
             tasks_queue = Queue()
             self.list_task_queue.append(tasks_queue)
             try:
-                wrk = ProcessWrk(handler_cls=self.handler_cls,
+                wrk = self.worker_cls(handler_cls=self.handler_cls,
                                  processor_cls=self.processor_cls,
                                  connection_queue=tasks_queue,
                                  model_config=model_config,
@@ -389,4 +409,3 @@ class TModelPoolServer(object):
         self.prepare()
         while not self._stop:
             self.handle()
-

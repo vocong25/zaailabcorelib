@@ -1,1 +1,2 @@
 include zaailabcorelib/zlogger/logging.conf
+include zaailabcorelib/templates/run_server.sh
